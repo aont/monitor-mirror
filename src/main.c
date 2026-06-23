@@ -56,6 +56,7 @@ typedef struct Vertex2D {
 static HWND g_hwnd = NULL;
 static int g_running = 1;
 static int g_cursor_was_inside_source = 0;
+static HCURSOR g_mirror_window_cursor = NULL;
 
 static IDXGIAdapter1 *g_adapter = NULL;
 static IDXGIOutput1 *g_output1 = NULL;
@@ -514,6 +515,16 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         constrain_sizing_rect_to_capture_aspect(hwnd, wp, (RECT *)lp);
         return TRUE;
 
+    case WM_SETCURSOR:
+        if (LOWORD(lp) == HTCLIENT) {
+            if (!g_mirror_window_cursor) {
+                g_mirror_window_cursor = LoadCursor(NULL, IDC_CROSS);
+            }
+            SetCursor(g_mirror_window_cursor);
+            return TRUE;
+        }
+        break;
+
     case WM_SIZE:
         if (wp != SIZE_MINIMIZED) {
             g_client_width = LOWORD(lp);
@@ -677,7 +688,8 @@ static void create_window_for_capture(HINSTANCE inst)
     wc.lpfnWndProc = wnd_proc;
     wc.hInstance = inst;
     wc.lpszClassName = "DDA_CAPTURE_WINDOW_AUTOACTIVATE_C";
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    g_mirror_window_cursor = LoadCursor(NULL, IDC_CROSS);
+    wc.hCursor = g_mirror_window_cursor;
 
     if (!RegisterClassA(&wc)) {
         fprintf(stderr, "RegisterClassA failed\n");
