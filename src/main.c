@@ -14,16 +14,12 @@
 #include <d3dcompiler.h>
 
 /*
-    MSYS2 UCRT64 build:
-
-    gcc -std=c11 -Wall -Wextra -D_CRT_SECURE_NO_WARNINGS \
-      dda_window_cursor_aspect_filter_autoactivate_fps_cursorfix.c \
-      -o dda_window_cursor_aspect_filter_autoactivate_fps_cursorfix.exe \
-      -ld3d11 -ldxgi -ldxguid -ld3dcompiler -luser32 -lgdi32
+    Build with `make` from the repository root. The output binary is
+    bin/monitor_mirror.exe.
 
     Usage:
-      ./dda_window_cursor_aspect_filter_autoactivate_fps_cursorfix.exe --filter bilinear 0
-      ./dda_window_cursor_aspect_filter_autoactivate_fps_cursorfix.exe -f lanczos 0
+      ./bin/monitor_mirror.exe --filter bilinear 0
+      ./bin/monitor_mirror.exe -f lanczos 0
 
     Filters:
       nearest, bilinear, bicubic, lanczos
