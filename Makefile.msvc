@@ -1,14 +1,6 @@
-# MSVC nmake makefile. Run `vcpkg install` first to install manifest dependencies.
-
 CC = cl
-VCPKG_INSTALLED_DIR = vcpkg_installed
-VCPKG_TARGET_TRIPLET = x64-windows
-VCPKG_INCLUDE_DIR = $(VCPKG_INSTALLED_DIR)\$(VCPKG_TARGET_TRIPLET)\include
-VCPKG_LIB_DIR = $(VCPKG_INSTALLED_DIR)\$(VCPKG_TARGET_TRIPLET)\lib
-CFLAGS = /nologo /std:c11 /W4 /D_CRT_SECURE_NO_WARNINGS /I"$(VCPKG_INCLUDE_DIR)"
-LDFLAGS = /nologo /LIBPATH:"$(VCPKG_LIB_DIR)"
+LDFLAGS = /nologo
 LDLIBS = d3d11.lib dxgi.lib dxguid.lib user32.lib gdi32.lib d3dcompiler.lib getopt.lib
-
 SRC_DIR = src
 BIN_DIR = bin
 TARGET = $(BIN_DIR)\monitor_mirror.exe
