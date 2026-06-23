@@ -6,24 +6,28 @@ Monitor Mirror is a Windows desktop capture utility that mirrors a selected DXGI
 
 ```text
 .
-├── Makefile        # Build, run, and clean targets
+├── Makefile.mingw  # GNU make build, run, and clean targets for MinGW
+├── Makefile.msvc   # MSVC nmake build, run, and clean targets
 ├── README.md       # Project documentation
+├── vcpkg.json      # vcpkg manifest for MSVC dependencies
 └── src/
     └── main.c      # Application source code
 ```
 
-Build artifacts are written to `bin/`, which is created by `make` when needed.
+Build artifacts are written to `bin/`, which is created by the selected build tool when needed.
 
 ## Requirements
 
 - Windows
-- MSYS2 UCRT64 or another GCC environment with Windows SDK/Direct3D headers and libraries
-- `make`
+- For MinGW builds: MSYS2 UCRT64 or another GCC environment with Windows SDK/Direct3D headers and libraries, plus `make`
+- For MSVC builds: Visual Studio Build Tools or Visual Studio with the C++ workload, `nmake`, and vcpkg
 
 ## Build
 
+### MinGW / GNU make
+
 ```sh
-make
+make -f Makefile.mingw
 ```
 
 The build produces:
@@ -32,10 +36,26 @@ The build produces:
 bin/monitor_mirror.exe
 ```
 
+### MSVC / nmake
+
+Open a Developer Command Prompt for Visual Studio, install the vcpkg manifest dependencies, then build with `nmake`:
+
+```bat
+vcpkg install
+nmake /f Makefile.msvc
+```
+
+The vcpkg manifest installs `getopt-win32`, which provides the `getopt.h` dependency used by the command-line option parser. `Makefile.msvc` assumes the default vcpkg manifest output path and target triplet (`vcpkg_installed\x64-windows`). Override `VCPKG_INSTALLED_DIR` or `VCPKG_TARGET_TRIPLET` on the `nmake` command line if you use a different install directory or triplet:
+
+```bat
+nmake /f Makefile.msvc VCPKG_TARGET_TRIPLET=x86-windows
+```
+
+
 You can override the compiler and flags if needed:
 
 ```sh
-make CC=gcc CFLAGS="-std=c11 -Wall -Wextra -O2 -D_CRT_SECURE_NO_WARNINGS"
+make -f Makefile.mingw CC=gcc CFLAGS="-std=c11 -Wall -Wextra -O2 -D_CRT_SECURE_NO_WARNINGS"
 ```
 
 ## Usage
@@ -90,11 +110,23 @@ Enable FPS logging:
 Remove generated build artifacts:
 
 ```sh
-make clean
+make -f Makefile.mingw clean
+```
+
+For MSVC / nmake builds:
+
+```bat
+nmake /f Makefile.msvc clean
 ```
 
 Build and run the executable:
 
 ```sh
-make run
+make -f Makefile.mingw run
+```
+
+For MSVC / nmake builds:
+
+```bat
+nmake /f Makefile.msvc run
 ```
