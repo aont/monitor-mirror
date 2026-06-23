@@ -59,6 +59,18 @@ Choose a resize filter:
 ./bin/monitor_mirror.exe -f lanczos 0
 ```
 
+Choose how the mirror window is raised when the cursor enters the mirrored source display:
+
+```sh
+./bin/monitor_mirror.exe --raise-mode foreground 0
+./bin/monitor_mirror.exe --raise-mode topmost-pulse 0
+```
+
+Raise modes are:
+
+- `foreground` / `activate` - use the existing foreground activation path.
+- `topmost-pulse` / `topmost` - temporarily set the mirror window to `HWND_TOPMOST`, then immediately return it to `HWND_NOTOPMOST` so it comes forward without staying always-on-top.
+
 Supported filters are:
 
 - `nearest` / `point`

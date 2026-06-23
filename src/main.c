@@ -58,6 +58,13 @@ static HWND g_hwnd = NULL;
 static int g_running = 1;
 static int g_cursor_was_inside_source = 0;
 
+typedef enum RaiseMode {
+    RAISE_FOREGROUND = 0,
+    RAISE_TOPMOST_PULSE = 1
+} RaiseMode;
+
+static RaiseMode g_raise_mode = RAISE_FOREGROUND;
+
 static IDXGIAdapter1 *g_adapter = NULL;
 static IDXGIOutput1 *g_output1 = NULL;
 static IDXGIOutputDuplication *g_dup = NULL;
@@ -151,6 +158,51 @@ static void tap_alt_key(void)
     inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
 
     SendInput(2, inputs, sizeof(INPUT));
+}
+
+static bool pulse_window_topmost(HWND hwnd)
+{
+    hwnd = normalize_top_level(hwnd);
+
+    if (!hwnd) return false;
+    if (!IsWindow(hwnd)) return false;
+    if (!IsWindowVisible(hwnd)) return false;
+
+    if (IsIconic(hwnd)) {
+        ShowWindowAsync(hwnd, SW_RESTORE);
+    } else {
+        ShowWindowAsync(hwnd, SW_SHOW);
+    }
+
+    if (!SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE |
+            SWP_NOSIZE |
+            SWP_SHOWWINDOW |
+            SWP_ASYNCWINDOWPOS)) {
+        return false;
+    }
+
+    if (!SetWindowPos(
+            hwnd,
+            HWND_NOTOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE |
+            SWP_NOSIZE |
+            SWP_SHOWWINDOW |
+            SWP_ASYNCWINDOWPOS)) {
+        return false;
+    }
+
+    return true;
 }
 
 static bool activate_window(HWND hwnd)
@@ -259,7 +311,20 @@ static int point_in_rect_exclusive(const RECT *r, POINT p)
     return p.x >= r->left && p.x < r->right && p.y >= r->top && p.y < r->bottom;
 }
 
-static void maybe_activate_when_cursor_enters_source_display(void)
+static void raise_mirror_window(void)
+{
+    switch (g_raise_mode) {
+    case RAISE_TOPMOST_PULSE:
+        pulse_window_topmost(g_hwnd);
+        break;
+    case RAISE_FOREGROUND:
+    default:
+        activate_window(g_hwnd);
+        break;
+    }
+}
+
+static void maybe_raise_when_cursor_enters_source_display(void)
 {
     POINT cursor;
     int inside;
@@ -271,7 +336,7 @@ static void maybe_activate_when_cursor_enters_source_display(void)
     inside = point_in_rect_exclusive(&g_output_desc.DesktopCoordinates, cursor);
 
     if (inside && !g_cursor_was_inside_source) {
-        activate_window(g_hwnd);
+        raise_mirror_window();
     }
 
     g_cursor_was_inside_source = inside;
@@ -286,6 +351,31 @@ static void initialize_cursor_inside_source_state(void)
     } else {
         g_cursor_was_inside_source = 0;
     }
+}
+
+static const char *raise_mode_name(RaiseMode mode)
+{
+    switch (mode) {
+    case RAISE_FOREGROUND: return "foreground";
+    case RAISE_TOPMOST_PULSE: return "topmost-pulse";
+    default: return "unknown";
+    }
+}
+
+static int parse_raise_mode_name(const char *name, RaiseMode *mode_out)
+{
+    if (!name || !mode_out) return 0;
+
+    if (strcmp(name, "foreground") == 0 || strcmp(name, "activate") == 0) {
+        *mode_out = RAISE_FOREGROUND;
+        return 1;
+    }
+    if (strcmp(name, "topmost-pulse") == 0 || strcmp(name, "topmost") == 0) {
+        *mode_out = RAISE_TOPMOST_PULSE;
+        return 1;
+    }
+
+    return 0;
 }
 
 static const char *filter_name(ResizeFilter filter)
@@ -330,6 +420,7 @@ static void print_usage(const char *prog)
             "       %s [options]\n\n"
             "Options:\n"
             "  -f, --filter <name>        Resize filter: nearest, bilinear, bicubic, lanczos\n"
+            "      --raise-mode <name>    Cursor-enter raise mode: foreground, topmost-pulse\n"
             "      --fps-log              Log FPS every 1.0 second\n"
             "      --fps-log-interval <s> Log FPS every <s> seconds; 0 disables logging\n"
             "  -h, --help                 Show this help\n\n"
@@ -1816,11 +1907,13 @@ int main(int argc, char **argv)
 
     enum {
         OPT_FPS_LOG = 1000,
-        OPT_FPS_LOG_INTERVAL = 1001
+        OPT_FPS_LOG_INTERVAL = 1001,
+        OPT_RAISE_MODE = 1002
     };
 
     static const struct option long_options[] = {
         {"filter",           required_argument, NULL, 'f'},
+        {"raise-mode",       required_argument, NULL, OPT_RAISE_MODE},
         {"fps-log",          no_argument,       NULL, OPT_FPS_LOG},
         {"fps-log-interval", required_argument, NULL, OPT_FPS_LOG_INTERVAL},
         {"help",             no_argument,       NULL, 'h'},
@@ -1840,6 +1933,14 @@ int main(int argc, char **argv)
         case 'f':
             if (!parse_filter_name(optarg, &g_resize_filter)) {
                 fprintf(stderr, "Unknown filter: %s\n\n", optarg);
+                print_usage(argv[0]);
+                return 1;
+            }
+            break;
+
+        case OPT_RAISE_MODE:
+            if (!parse_raise_mode_name(optarg, &g_raise_mode)) {
+                fprintf(stderr, "Unknown raise mode: %s\n\n", optarg);
                 print_usage(argv[0]);
                 return 1;
             }
@@ -1890,11 +1991,12 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    printf("Selected display %u: %ux%u, filter=%s, fps_log=%s",
+    printf("Selected display %u: %ux%u, filter=%s, raise_mode=%s, fps_log=%s",
            output_index,
            g_capture_width,
            g_capture_height,
            filter_name(g_resize_filter),
+           raise_mode_name(g_raise_mode),
            g_fps_log_enabled ? "on" : "off");
     if (g_fps_log_enabled) {
         printf(", fps_log_interval=%.3f sec", g_fps_log_interval_sec);
@@ -1926,7 +2028,7 @@ int main(int argc, char **argv)
             DispatchMessageA(&msg);
         }
 
-        maybe_activate_when_cursor_enters_source_display();
+        maybe_raise_when_cursor_enters_source_display();
 
         hr = render_one_frame();
         if (FAILED(hr)) {
