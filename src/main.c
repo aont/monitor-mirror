@@ -2,6 +2,7 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
+#include <windowsx.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -507,6 +508,63 @@ static void constrain_sizing_rect_to_capture_aspect(HWND hwnd, WPARAM edge, RECT
     }
 }
 
+
+static void compute_letterbox_viewport(UINT target_w, UINT target_h, D3D11_VIEWPORT *vp);
+
+static int mirror_client_point_to_source_screen(POINT client_pt, POINT *source_pt)
+{
+    D3D11_VIEWPORT vp;
+    double rel_x;
+    double rel_y;
+    double src_x;
+    double src_y;
+
+    if (!source_pt) return 0;
+    if (!g_capture_width || !g_capture_height) return 0;
+    if (!g_client_width || !g_client_height) return 0;
+
+    compute_letterbox_viewport(g_client_width, g_client_height, &vp);
+
+    if ((double)client_pt.x < (double)vp.TopLeftX ||
+        (double)client_pt.y < (double)vp.TopLeftY ||
+        (double)client_pt.x >= (double)vp.TopLeftX + (double)vp.Width ||
+        (double)client_pt.y >= (double)vp.TopLeftY + (double)vp.Height) {
+        return 0;
+    }
+
+    rel_x = ((double)client_pt.x - (double)vp.TopLeftX) / (double)vp.Width;
+    rel_y = ((double)client_pt.y - (double)vp.TopLeftY) / (double)vp.Height;
+
+    if (rel_x < 0.0) rel_x = 0.0;
+    if (rel_y < 0.0) rel_y = 0.0;
+    if (rel_x > 1.0) rel_x = 1.0;
+    if (rel_y > 1.0) rel_y = 1.0;
+
+    src_x = rel_x * (double)g_capture_width;
+    src_y = rel_y * (double)g_capture_height;
+
+    if (src_x >= (double)g_capture_width) src_x = (double)g_capture_width - 1.0;
+    if (src_y >= (double)g_capture_height) src_y = (double)g_capture_height - 1.0;
+
+    source_pt->x = g_output_desc.DesktopCoordinates.left + (LONG)src_x;
+    source_pt->y = g_output_desc.DesktopCoordinates.top + (LONG)src_y;
+    return 1;
+}
+
+static void move_cursor_to_mirrored_source_point(LPARAM lp)
+{
+    POINT client_pt;
+    POINT source_pt;
+
+    client_pt.x = GET_X_LPARAM(lp);
+    client_pt.y = GET_Y_LPARAM(lp);
+
+    if (!mirror_client_point_to_source_screen(client_pt, &source_pt)) return;
+
+    SetCursorPos(source_pt.x, source_pt.y);
+    g_cursor_was_inside_source = 1;
+}
+
 static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     switch (msg) {
@@ -522,6 +580,10 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 g_need_resize_present = 1;
             }
         }
+        return 0;
+
+    case WM_LBUTTONDBLCLK:
+        move_cursor_to_mirrored_source_point(lp);
         return 0;
 
     case WM_CLOSE:
@@ -674,6 +736,7 @@ static void create_window_for_capture(HINSTANCE inst)
     DWORD style = WS_OVERLAPPEDWINDOW;
 
     ZeroMemory(&wc, sizeof(wc));
+    wc.style = CS_DBLCLKS;
     wc.lpfnWndProc = wnd_proc;
     wc.hInstance = inst;
     wc.lpszClassName = "DDA_CAPTURE_WINDOW_AUTOACTIVATE_C";
