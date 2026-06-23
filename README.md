@@ -9,7 +9,6 @@ Monitor Mirror is a Windows desktop capture utility that mirrors a selected DXGI
 ├── Makefile.mingw  # GNU make build, run, and clean targets for MinGW
 ├── Makefile.msvc   # MSVC nmake build, run, and clean targets
 ├── README.md       # Project documentation
-├── vcpkg.json      # vcpkg manifest for MSVC dependencies
 └── src/
     └── main.c      # Application source code
 ```
@@ -20,7 +19,7 @@ Build artifacts are written to `bin/`, which is created by the selected build to
 
 - Windows
 - For MinGW builds: MSYS2 UCRT64 or another GCC environment with Windows SDK/Direct3D headers and libraries, plus `make`
-- For MSVC builds: Visual Studio Build Tools or Visual Studio with the C++ workload, `nmake`, and vcpkg
+- For MSVC builds: Visual Studio Build Tools or Visual Studio with the C++ workload, `nmake`, and `getopt-msvc-helper`
 
 ## Build
 
@@ -38,19 +37,19 @@ bin/monitor_mirror.exe
 
 ### MSVC / nmake
 
-Open a Developer Command Prompt for Visual Studio, install the vcpkg manifest dependencies, then build with `nmake`:
+Open a Developer Command Prompt for Visual Studio, then build `getopt.h` and `getopt.lib` with [getopt-msvc-helper](https://github.com/aont/getopt-msvc-helper). After building it, add the directory that contains `getopt.h` to the `INCLUDE` environment variable and the directory that contains `getopt.lib` to the `LIB` environment variable. For example:
 
 ```bat
-vcpkg install
+git clone https://github.com/aont/getopt-msvc-helper.git
+cd getopt-msvc-helper
+nmake
+set "INCLUDE=%CD%;%INCLUDE%"
+set "LIB=%CD%;%LIB%"
+cd ..\monitor-mirror
 nmake /f Makefile.msvc
 ```
 
-The vcpkg manifest installs `getopt-win32`, which provides the `getopt.h` dependency used by the command-line option parser. `Makefile.msvc` assumes the default vcpkg manifest output path and target triplet (`vcpkg_installed\x64-windows`). Override `VCPKG_INSTALLED_DIR` or `VCPKG_TARGET_TRIPLET` on the `nmake` command line if you use a different install directory or triplet:
-
-```bat
-nmake /f Makefile.msvc VCPKG_TARGET_TRIPLET=x86-windows
-```
-
+`Makefile.msvc` links against `getopt.lib`, which provides the `getopt.h` dependency used by the command-line option parser. If `getopt.h` or `getopt.lib` are in separate directories, add each directory to `INCLUDE` or `LIB` respectively before running `nmake`.
 
 You can override the compiler and flags if needed:
 
