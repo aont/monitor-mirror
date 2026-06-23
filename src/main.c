@@ -510,6 +510,7 @@ static void constrain_sizing_rect_to_capture_aspect(HWND hwnd, WPARAM edge, RECT
 
 
 static void compute_letterbox_viewport(UINT target_w, UINT target_h, D3D11_VIEWPORT *vp);
+static int client_point_in_mirror_source_area(POINT client_pt);
 
 static int mirror_client_point_to_source_screen(POINT client_pt, POINT *source_pt)
 {
@@ -585,6 +586,18 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_LBUTTONDBLCLK:
         move_cursor_to_mirrored_source_point(lp);
         return 0;
+
+    case WM_SETCURSOR:
+        if (LOWORD(lp) == HTCLIENT) {
+            POINT client_pt;
+
+            if (GetCursorPos(&client_pt) && ScreenToClient(hwnd, &client_pt) &&
+                client_point_in_mirror_source_area(client_pt)) {
+                SetCursor(LoadCursor(NULL, IDC_HAND));
+                return TRUE;
+            }
+        }
+        return DefWindowProcA(hwnd, msg, wp, lp);
 
     case WM_CLOSE:
         DestroyWindow(hwnd);
@@ -1568,7 +1581,7 @@ static HRESULT ensure_frame_gpu_texture(UINT width, UINT height)
     );
 }
 
-static void compute_letterbox_viewport(UINT target_w, UINT target_h, D3D11_VIEWPORT *vp)
+static void compute_letterbox_viewport_for_source(UINT source_w, UINT source_h, UINT target_w, UINT target_h, D3D11_VIEWPORT *vp)
 {
     double src_aspect;
     double dst_aspect;
@@ -1579,7 +1592,9 @@ static void compute_letterbox_viewport(UINT target_w, UINT target_h, D3D11_VIEWP
 
     ZeroMemory(vp, sizeof(*vp));
 
-    src_aspect = (double)g_frame_width / (double)g_frame_height;
+    if (!source_w || !source_h || !target_w || !target_h) return;
+
+    src_aspect = (double)source_w / (double)source_h;
     dst_aspect = (double)target_w / (double)target_h;
 
     if (dst_aspect > src_aspect) {
@@ -1604,6 +1619,27 @@ static void compute_letterbox_viewport(UINT target_w, UINT target_h, D3D11_VIEWP
     vp->Height = draw_h;
     vp->MinDepth = 0.0f;
     vp->MaxDepth = 1.0f;
+}
+
+static void compute_letterbox_viewport(UINT target_w, UINT target_h, D3D11_VIEWPORT *vp)
+{
+    compute_letterbox_viewport_for_source(g_frame_width, g_frame_height, target_w, target_h, vp);
+}
+
+static int client_point_in_mirror_source_area(POINT client_pt)
+{
+    D3D11_VIEWPORT vp;
+    UINT source_w = g_frame_width ? g_frame_width : g_capture_width;
+    UINT source_h = g_frame_height ? g_frame_height : g_capture_height;
+
+    if (!source_w || !source_h || !g_client_width || !g_client_height) return 0;
+
+    compute_letterbox_viewport_for_source(source_w, source_h, g_client_width, g_client_height, &vp);
+
+    return (double)client_pt.x >= (double)vp.TopLeftX &&
+           (double)client_pt.y >= (double)vp.TopLeftY &&
+           (double)client_pt.x < (double)vp.TopLeftX + (double)vp.Width &&
+           (double)client_pt.y < (double)vp.TopLeftY + (double)vp.Height;
 }
 
 static HRESULT present_gpu_frame(void)
