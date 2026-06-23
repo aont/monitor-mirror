@@ -2,6 +2,7 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
+#include <windowsx.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -430,6 +431,82 @@ static void get_window_frame_delta(HWND hwnd, LONG *dx, LONG *dy)
     *dy = (rc.bottom - rc.top) - 100;
 }
 
+static int map_client_point_to_source_screen(POINT client_pt, POINT *screen_pt_out)
+{
+    double src_w;
+    double src_h;
+    double dst_w;
+    double dst_h;
+    double src_aspect;
+    double dst_aspect;
+    double draw_w;
+    double draw_h;
+    double off_x;
+    double off_y;
+    double local_x;
+    double local_y;
+    LONG source_x;
+    LONG source_y;
+
+    if (!screen_pt_out) return 0;
+
+    src_w = g_frame_width ? (double)g_frame_width : (double)g_capture_width;
+    src_h = g_frame_height ? (double)g_frame_height : (double)g_capture_height;
+    dst_w = g_client_width ? (double)g_client_width : (double)g_capture_width;
+    dst_h = g_client_height ? (double)g_client_height : (double)g_capture_height;
+
+    if (src_w <= 0.0 || src_h <= 0.0 || dst_w <= 0.0 || dst_h <= 0.0) return 0;
+
+    src_aspect = src_w / src_h;
+    dst_aspect = dst_w / dst_h;
+
+    if (dst_aspect > src_aspect) {
+        draw_h = dst_h;
+        draw_w = draw_h * src_aspect;
+    } else {
+        draw_w = dst_w;
+        draw_h = draw_w / src_aspect;
+    }
+
+    if (draw_w < 1.0) draw_w = 1.0;
+    if (draw_h < 1.0) draw_h = 1.0;
+    if (draw_w > dst_w) draw_w = dst_w;
+    if (draw_h > dst_h) draw_h = dst_h;
+
+    off_x = (dst_w - draw_w) * 0.5;
+    off_y = (dst_h - draw_h) * 0.5;
+
+    local_x = (double)client_pt.x - off_x;
+    local_y = (double)client_pt.y - off_y;
+
+    if (local_x < 0.0 || local_y < 0.0 || local_x >= draw_w || local_y >= draw_h) {
+        return 0;
+    }
+
+    source_x = g_output_desc.DesktopCoordinates.left + (LONG)(local_x * src_w / draw_w);
+    source_y = g_output_desc.DesktopCoordinates.top + (LONG)(local_y * src_h / draw_h);
+
+    if (source_x >= g_output_desc.DesktopCoordinates.right) {
+        source_x = g_output_desc.DesktopCoordinates.right - 1;
+    }
+    if (source_y >= g_output_desc.DesktopCoordinates.bottom) {
+        source_y = g_output_desc.DesktopCoordinates.bottom - 1;
+    }
+
+    screen_pt_out->x = source_x;
+    screen_pt_out->y = source_y;
+    return 1;
+}
+
+static void move_cursor_to_source_from_client_point(POINT client_pt)
+{
+    POINT source_screen;
+
+    if (!map_client_point_to_source_screen(client_pt, &source_screen)) return;
+
+    SetCursorPos(source_screen.x, source_screen.y);
+}
+
 static void constrain_sizing_rect_to_capture_aspect(HWND hwnd, WPARAM edge, RECT *r)
 {
     LONG frame_dx = 0;
@@ -511,6 +588,16 @@ static void constrain_sizing_rect_to_capture_aspect(HWND hwnd, WPARAM edge, RECT
 static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     switch (msg) {
+    case WM_LBUTTONDBLCLK:
+    {
+        POINT client_pt;
+
+        client_pt.x = GET_X_LPARAM(lp);
+        client_pt.y = GET_Y_LPARAM(lp);
+        move_cursor_to_source_from_client_point(client_pt);
+        return 0;
+    }
+
     case WM_SIZING:
         constrain_sizing_rect_to_capture_aspect(hwnd, wp, (RECT *)lp);
         return TRUE;
@@ -685,6 +772,7 @@ static void create_window_for_capture(HINSTANCE inst)
     DWORD style = WS_OVERLAPPEDWINDOW;
 
     ZeroMemory(&wc, sizeof(wc));
+    wc.style = CS_DBLCLKS;
     wc.lpfnWndProc = wnd_proc;
     wc.hInstance = inst;
     wc.lpszClassName = "DDA_CAPTURE_WINDOW_AUTOACTIVATE_C";
