@@ -769,7 +769,7 @@ static void create_window_for_capture(HINSTANCE inst)
     g_hwnd = CreateWindowExA(
         0,
         wc.lpszClassName,
-        "Desktop Duplication API - auto activate mirror window",
+        "Monitor Mirror",
         style,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
